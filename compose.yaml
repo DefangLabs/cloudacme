@@ -1,0 +1,24 @@
+version: '3.9'
+name: acmetest
+services:
+  service1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      # - mode: host
+      #   target: 80
+      #   published: 80
+      # - mode: host
+      #   target: 443
+      - mode: ingress
+        target: 8080
+    deploy:
+      resources:
+        reservations:
+          memory: 50M
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/"]
+    # domainname: dayifu.click
+    # networks:
+    #   - public
