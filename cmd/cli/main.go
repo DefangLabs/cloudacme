@@ -10,6 +10,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var version = "dev" // to be set by ldflags
+
 func main() {
 
 	var debug *bool = pflag.Bool("debug", false, "Enable debug logging")

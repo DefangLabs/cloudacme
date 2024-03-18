@@ -20,6 +20,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var version = "dev" // to be set by ldflags
+
 type Event struct {
 	events.ALBTargetGroupRequest
 	events.EventBridgeEvent
@@ -28,6 +30,7 @@ type Event struct {
 var logger *zap.Logger
 
 func HandleEvent(ctx context.Context, evt Event) (any, error) {
+	log.Printf("cloudacme version %v", version)
 	var err error
 	logger, err = zap.NewDevelopment()
 	if err != nil {
@@ -180,6 +183,7 @@ func getAccountKey() (*ecdsa.PrivateKey, error) {
 
 func HandleEventBridgeEvent(ctx context.Context, evt events.EventBridgeEvent) error {
 	log.Printf("Handling EventBridge Event: %+v", evt)
+	// TODO: implement certificate renewal
 	return nil
 }
 
