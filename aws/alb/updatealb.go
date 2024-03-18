@@ -11,25 +11,9 @@ import (
 	"github.com/aws/smithy-go/ptr"
 )
 
-const AlbArn = "arn:aws:elasticloadbalancing:us-west-2:381492210770:loadbalancer/app/Defang-acmetest-beta-alb/6d3dcd8ea647aba8"
+var ErrRuleNotFound = errors.New("rule not found")
 
-// func main() {
-//
-// 	ctx := context.Background()
-//
-// 	listener := getHttpListener(ctx, AlbArn)
-// 	if listener == nil {
-// 		log.Fatalf("unable to find HTTP listener")
-// 	}
-//
-// 	log.Printf("Listener ARN: %s", *listener.ListenerArn)
-//
-// 	addListenerStaticRule(ctx, *listener.ListenerArn, "/test", "Hello, World!")
-// 	time.Sleep(15 * time.Second)
-// 	deleteListenerStaticRule(ctx, *listener.ListenerArn, "/test")
-// }
-
-func DeleteListenerStaticRule(ctx context.Context, listenerArn, path string) error {
+func DeleteListenerPathRule(ctx context.Context, listenerArn, path string) error {
 	svc := elbv2.NewFromConfig(aws.LoadConfig())
 	searchInput := &elbv2.DescribeRulesInput{
 		ListenerArn: &listenerArn,
@@ -41,13 +25,15 @@ func DeleteListenerStaticRule(ctx context.Context, listenerArn, path string) err
 
 	ruleArn := ""
 	for _, rule := range rulesOutput.Rules {
-		if rule.Conditions[0].PathPatternConfig != nil && rule.Conditions[0].PathPatternConfig.Values[0] == path {
+		log.Printf("Condition: %+v", rule.Conditions)
+		if len(rule.Conditions) > 0 && rule.Conditions[0].PathPatternConfig != nil && rule.Conditions[0].PathPatternConfig.Values[0] == path {
+			log.Printf("Rule values %+v", rule.Conditions[0].PathPatternConfig.Values[0])
 			ruleArn = *rule.RuleArn
 			break
 		}
 	}
 	if ruleArn == "" {
-		return errors.New("rule not found")
+		return ErrRuleNotFound
 	}
 
 	input := &elbv2.DeleteRuleInput{
@@ -55,12 +41,12 @@ func DeleteListenerStaticRule(ctx context.Context, listenerArn, path string) err
 	}
 
 	if _, err := svc.DeleteRule(ctx, input); err != nil {
-		log.Fatalf("unable to delete rule, %v", err)
+		return err
 	}
 	return nil
 }
 
-func AddListenerStaticRule(ctx context.Context, listenerArn, path, value string) error {
+func AddListenerStaticRule(ctx context.Context, listenerArn, path, value string, priority int32) error {
 	svc := elbv2.NewFromConfig(aws.LoadConfig())
 	input := &elbv2.CreateRuleInput{
 		Actions: []types.Action{
@@ -82,7 +68,7 @@ func AddListenerStaticRule(ctx context.Context, listenerArn, path, value string)
 			},
 		},
 		ListenerArn: &listenerArn,
-		Priority:    ptr.Int32(1),
+		Priority:    ptr.Int32(priority),
 	}
 
 	_, err := svc.CreateRule(ctx, input)
@@ -92,7 +78,7 @@ func AddListenerStaticRule(ctx context.Context, listenerArn, path, value string)
 	return nil
 }
 
-func GetHttpListener(ctx context.Context, albArn string) (*types.Listener, error) {
+func GetListener(ctx context.Context, albArn string, protocol types.ProtocolEnum, port int32) (*types.Listener, error) {
 	svc := elbv2.NewFromConfig(aws.LoadConfig())
 	input := &elbv2.DescribeListenersInput{
 		LoadBalancerArn: &albArn,
@@ -104,9 +90,33 @@ func GetHttpListener(ctx context.Context, albArn string) (*types.Listener, error
 	}
 
 	for _, listener := range result.Listeners {
-		if listener.Protocol == types.ProtocolEnumHttp && listener.Port != nil && *listener.Port == 80 {
+		if listener.Protocol == protocol && listener.Port != nil && *listener.Port == port {
 			return &listener, nil
 		}
 	}
 	return nil, errors.New("Listener not found")
+}
+
+func GetAlbCerts(ctx context.Context, albArn string) ([]string, error) {
+	albSvc := elbv2.NewFromConfig(aws.LoadConfig())
+
+	listener, err := GetListener(ctx, albArn, types.ProtocolEnumHttps, 443)
+	if err != nil {
+		return nil, err
+	}
+
+	input := &elbv2.DescribeListenerCertificatesInput{
+		ListenerArn: listener.ListenerArn,
+	}
+
+	result, err := albSvc.DescribeListenerCertificates(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	certArns := make([]string, 0, len(result.Certificates))
+	for _, cert := range result.Certificates {
+		certArns = append(certArns, *cert.CertificateArn)
+	}
+	return certArns, nil
 }
