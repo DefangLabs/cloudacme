@@ -1,4 +1,4 @@
-module defang.io/acme
+module defang.io/cloudacme
 
 go 1.21.5
 

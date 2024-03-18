@@ -11,9 +11,9 @@ import (
 	"net/url"
 	"os"
 
-	"defang.io/acme"
-	"defang.io/acme/aws/acm"
-	"defang.io/acme/aws/alb"
+	"defang.io/cloudacme/acme"
+	"defang.io/cloudacme/aws/acm"
+	"defang.io/cloudacme/aws/alb"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	awsalb "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"

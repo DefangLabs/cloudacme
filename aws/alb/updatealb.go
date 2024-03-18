@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log"
 
-	"defang.io/acme/aws"
+	"defang.io/cloudacme/aws"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/smithy-go/ptr"
