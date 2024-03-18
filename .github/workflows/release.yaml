@@ -10,29 +10,26 @@ jobs:
     name: build_release
     runs-on: ubuntu-latest
     permissions:
-      contents: read
       packages: write
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: build
-        run: make build
-      - name: release
-        uses: actions/create-release@v1
-        id: create_release
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          draft: false
-          prerelease: false
-          release_name: ${{ github.ref_name }}
-          tag_name: ${{ github.ref }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-      - name: upload linux artifact
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Download Go dependencies
+        run: go mod download
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v5
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./acme.zip
-          asset_name: acme.linux-amd64.zip
-          asset_content_type: application/zip
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+
