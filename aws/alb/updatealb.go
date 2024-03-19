@@ -3,6 +3,7 @@ package alb
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	"defang.io/cloudacme/aws"
@@ -119,4 +120,27 @@ func GetAlbCerts(ctx context.Context, albArn string) ([]string, error) {
 		certArns = append(certArns, *cert.CertificateArn)
 	}
 	return certArns, nil
+}
+
+func GetTargetGroupAlb(ctx context.Context, targetGroupArn string) (string, error) {
+	svc := elbv2.NewFromConfig(aws.LoadConfig())
+	input := &elbv2.DescribeTargetGroupsInput{
+		TargetGroupArns: []string{targetGroupArn},
+	}
+
+	result, err := svc.DescribeTargetGroups(ctx, input)
+	if err != nil {
+		return "", err
+	}
+
+	if len(result.TargetGroups) == 0 {
+		return "", fmt.Errorf("cannot find target group with arn %v", targetGroupArn)
+	}
+
+	tg := result.TargetGroups[0]
+	if len(tg.LoadBalancerArns) == 0 {
+		return "", fmt.Errorf("target group %v has no load balancer", targetGroupArn)
+	}
+
+	return tg.LoadBalancerArns[0], nil // Only 1 LB per tg possible according to aws docs
 }

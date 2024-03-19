@@ -47,9 +47,10 @@ func HandleEvent(ctx context.Context, evt Event) (any, error) {
 func HandleALBEvent(ctx context.Context, evt events.ALBTargetGroupRequest) (*events.ALBTargetGroupResponse, error) {
 	log.Printf("Handling ALB Event: %+v", evt)
 
-	albArn := os.Getenv("ALB_ARN")
-	if albArn == "" {
-		return nil, fmt.Errorf("ALB_ARN environment variable not set")
+	targetGroupArn := evt.RequestContext.ELB.TargetGroupArn
+	albArn, err := alb.GetTargetGroupAlb(ctx, targetGroupArn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ALB ARN from target group %v: %w", targetGroupArn, err)
 	}
 
 	if err := updateAcmeCertificate(ctx, albArn, evt.Headers["host"]); err != nil {
