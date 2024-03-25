@@ -22,9 +22,14 @@ import (
 
 var version = "dev" // to be set by ldflags
 
+type CertificateRenewalEvent struct {
+	Domain string `json:"domain"`
+	AlbArn string `json:"albArn"`
+}
+
 type Event struct {
 	events.ALBTargetGroupRequest
-	events.EventBridgeEvent
+	CertificateRenewalEvent
 }
 
 var logger *zap.Logger
@@ -40,7 +45,7 @@ func HandleEvent(ctx context.Context, evt Event) (any, error) {
 	if evt.HTTPMethod != "" {
 		return HandleALBEvent(ctx, evt.ALBTargetGroupRequest)
 	} else {
-		return nil, HandleEventBridgeEvent(ctx, evt.EventBridgeEvent)
+		return nil, HandleEventBridgeEvent(ctx, evt.CertificateRenewalEvent)
 	}
 }
 
@@ -182,9 +187,13 @@ func getAccountKey() (*ecdsa.PrivateKey, error) {
 	return key, nil
 }
 
-func HandleEventBridgeEvent(ctx context.Context, evt events.EventBridgeEvent) error {
-	log.Printf("Handling EventBridge Event: %+v", evt)
-	// TODO: implement certificate renewal
+func HandleEventBridgeEvent(ctx context.Context, evt CertificateRenewalEvent) error {
+	log.Printf("Handling Certificate Renewal Event: %+v", evt)
+
+	if err := updateAcmeCertificate(ctx, evt.AlbArn, evt.Domain); err != nil {
+		return fmt.Errorf("failed to renew certificate: %w", err)
+	}
+
 	return nil
 }
 
