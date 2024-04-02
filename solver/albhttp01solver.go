@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const DefaultWaitTimeout = 1 * time.Minute
+const DefaultWaitTimeout = 5 * time.Minute
 
 type AlbHttp01Solver struct {
 	AlbArn      string
@@ -32,7 +32,12 @@ func (s AlbHttp01Solver) Present(ctx context.Context, chal acme.Challenge) error
 		return fmt.Errorf("cannot get http listener: %w", err)
 	}
 
-	if err := alb.AddListenerStaticRule(ctx, *listener.ListenerArn, chal.HTTP01ResourcePath(), chal.KeyAuthorization, 1); err != nil {
+	ruleCond := alb.RuleCondition{
+		HostHeader:  s.Domains,
+		PathPattern: []string{chal.HTTP01ResourcePath()},
+	}
+
+	if err := alb.AddListenerStaticRule(ctx, *listener.ListenerArn, ruleCond, chal.KeyAuthorization); err != nil {
 		return fmt.Errorf("failed to add listener static rule: %v", err)
 	}
 	return nil
@@ -46,7 +51,13 @@ func (s AlbHttp01Solver) CleanUp(ctx context.Context, chal acme.Challenge) error
 	if err != nil {
 		return fmt.Errorf("cannot get http listener: %w", err)
 	}
-	err = alb.DeleteListenerPathRule(ctx, *listener.ListenerArn, chal.HTTP01ResourcePath())
+
+	ruleCond := alb.RuleCondition{
+		HostHeader:  s.Domains,
+		PathPattern: []string{chal.HTTP01ResourcePath()},
+	}
+
+	err = alb.DeleteListenerPathRule(ctx, *listener.ListenerArn, ruleCond)
 	if errors.Is(err, alb.ErrRuleNotFound) {
 		if s.Logger != nil {
 			s.Logger.Info("Challenge rule not found, skipping cleanup alb rule", zap.String("path", chal.HTTP01ResourcePath()))

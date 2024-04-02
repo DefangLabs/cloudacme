@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"sort"
+	"strconv"
 
 	"defang.io/cloudacme/aws"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -14,7 +15,12 @@ import (
 
 var ErrRuleNotFound = errors.New("rule not found")
 
-func DeleteListenerPathRule(ctx context.Context, listenerArn, path string) error {
+type RuleCondition struct {
+	PathPattern []string
+	HostHeader  []string
+}
+
+func DeleteListenerPathRule(ctx context.Context, listenerArn string, target RuleCondition) error {
 	svc := elbv2.NewFromConfig(aws.LoadConfig())
 	searchInput := &elbv2.DescribeRulesInput{
 		ListenerArn: &listenerArn,
@@ -25,14 +31,24 @@ func DeleteListenerPathRule(ctx context.Context, listenerArn, path string) error
 	}
 
 	ruleArn := ""
+rules:
 	for _, rule := range rulesOutput.Rules {
-		log.Printf("Condition: %+v", rule.Conditions)
-		if len(rule.Conditions) > 0 && rule.Conditions[0].PathPatternConfig != nil && rule.Conditions[0].PathPatternConfig.Values[0] == path {
-			log.Printf("Rule values %+v", rule.Conditions[0].PathPatternConfig.Values[0])
+		for _, cond := range rule.Conditions {
+			if cond.PathPatternConfig != nil && target.PathPattern != nil && sameStringSlicesUnordered(cond.PathPatternConfig.Values, target.PathPattern) {
+				continue rules
+			}
+			if cond.HostHeaderConfig != nil && target.HostHeader != nil && sameStringSlicesUnordered(cond.HostHeaderConfig.Values, target.HostHeader) {
+				continue rules
+			}
+			// Only path and host header conditions are supported for now
+			if cond.SourceIpConfig != nil || cond.QueryStringConfig != nil || cond.HttpHeaderConfig != nil || cond.HttpRequestMethodConfig != nil {
+				continue rules
+			}
 			ruleArn = *rule.RuleArn
-			break
+			break rules
 		}
 	}
+
 	if ruleArn == "" {
 		return ErrRuleNotFound
 	}
@@ -47,8 +63,14 @@ func DeleteListenerPathRule(ctx context.Context, listenerArn, path string) error
 	return nil
 }
 
-func AddListenerStaticRule(ctx context.Context, listenerArn, path, value string, priority int32) error {
+func AddListenerStaticRule(ctx context.Context, listenerArn string, ruleCond RuleCondition, value string) error {
 	svc := elbv2.NewFromConfig(aws.LoadConfig())
+
+	priority, err := GetNextAvailablePriority(ctx, listenerArn)
+	if err != nil {
+		return err
+	}
+
 	input := &elbv2.CreateRuleInput{
 		Actions: []types.Action{
 			{
@@ -62,21 +84,74 @@ func AddListenerStaticRule(ctx context.Context, listenerArn, path, value string,
 		},
 		Conditions: []types.RuleCondition{
 			{
-				Field: ptr.String("path-pattern"),
-				PathPatternConfig: &types.PathPatternConditionConfig{
-					Values: []string{path},
-				},
+				Field:             ptr.String("path-pattern"),
+				PathPatternConfig: &types.PathPatternConditionConfig{Values: ruleCond.PathPattern},
+			},
+			{
+				Field:            ptr.String("host-header"),
+				HostHeaderConfig: &types.HostHeaderConditionConfig{Values: ruleCond.HostHeader},
 			},
 		},
 		ListenerArn: &listenerArn,
 		Priority:    ptr.Int32(priority),
 	}
 
-	_, err := svc.CreateRule(ctx, input)
-	if err != nil {
+	if _, err := svc.CreateRule(ctx, input); err != nil {
 		return err
 	}
 	return nil
+}
+
+func GetNextAvailablePriority(ctx context.Context, listenerArn string) (int32, error) {
+	rules, err := GetAllRules(ctx, listenerArn)
+	if err != nil {
+		return 0, err
+	}
+
+	ps := make([]int, 0, len(rules))
+	for _, rule := range rules {
+		if rule.Priority == nil {
+			continue
+		}
+		p, err := strconv.Atoi(*rule.Priority)
+		if err != nil {
+			continue
+		}
+		ps = append(ps, p)
+	}
+	ps = sort.IntSlice(ps)
+	priority := 1
+	for _, p := range ps {
+		if priority == p {
+			priority++
+		} else {
+			break
+		}
+	}
+	return int32(priority), nil
+}
+
+func GetAllRules(ctx context.Context, listenerArn string) ([]types.Rule, error) {
+	svc := elbv2.NewFromConfig(aws.LoadConfig())
+
+	var rules []types.Rule
+	for {
+		searchInput := &elbv2.DescribeRulesInput{
+			ListenerArn: &listenerArn,
+			PageSize:    ptr.Int32(400),
+		}
+
+		searchOuputput, err := svc.DescribeRules(ctx, searchInput)
+		if err != nil {
+			return nil, err
+		}
+		rules = append(rules, searchOuputput.Rules...)
+
+		if searchOuputput.NextMarker == nil {
+			return rules, nil
+		}
+		searchInput.Marker = searchOuputput.NextMarker
+	}
 }
 
 func GetListener(ctx context.Context, albArn string, protocol types.ProtocolEnum, port int32) (*types.Listener, error) {
@@ -143,4 +218,23 @@ func GetTargetGroupAlb(ctx context.Context, targetGroupArn string) (string, erro
 	}
 
 	return tg.LoadBalancerArns[0], nil // Only 1 LB per tg possible according to aws docs
+}
+
+func sameStringSlicesUnordered(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	diff := make(map[string]int)
+	for _, s := range a {
+		diff[s]++
+	}
+	for _, s := range b {
+		diff[s]--
+	}
+	for _, v := range diff {
+		if v != 0 {
+			return false
+		}
+	}
+	return true
 }

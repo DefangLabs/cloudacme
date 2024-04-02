@@ -58,11 +58,17 @@ func HandleALBEvent(ctx context.Context, evt events.ALBTargetGroupRequest) (*eve
 		return nil, fmt.Errorf("failed to get ALB ARN from target group %v: %w", targetGroupArn, err)
 	}
 
-	if err := updateAcmeCertificate(ctx, albArn, evt.Headers["host"]); err != nil {
+	host := evt.Headers["host"]
+	if err := updateAcmeCertificate(ctx, albArn, host); err != nil {
 		return nil, fmt.Errorf("failed to update certificate: %w", err)
 	}
 
-	if err := removeHttpRule(ctx, albArn, "/"); err != nil {
+	cond := alb.RuleCondition{
+		HostHeader:  []string{host},
+		PathPattern: []string{"/"},
+	}
+
+	if err := removeHttpRule(ctx, albArn, cond); err != nil {
 		return nil, fmt.Errorf("failed to remove http rule: %w", err)
 	}
 
@@ -74,12 +80,12 @@ func HandleALBEvent(ctx context.Context, evt events.ALBTargetGroupRequest) (*eve
 	}, nil
 }
 
-func removeHttpRule(ctx context.Context, albArn, path string) error {
+func removeHttpRule(ctx context.Context, albArn string, ruleCond alb.RuleCondition) error {
 	listener, err := alb.GetListener(ctx, albArn, awsalb.ProtocolEnumHttp, 80)
 	if err != nil {
 		return fmt.Errorf("cannot get http listener: %w", err)
 	}
-	if err := alb.DeleteListenerPathRule(ctx, *listener.ListenerArn, path); err != nil {
+	if err := alb.DeleteListenerPathRule(ctx, *listener.ListenerArn, ruleCond); err != nil {
 		return fmt.Errorf("failed to delete listener static rule: %w", err)
 	}
 	return nil
