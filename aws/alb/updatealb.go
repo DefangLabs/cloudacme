@@ -31,21 +31,10 @@ func DeleteListenerPathRule(ctx context.Context, listenerArn string, target Rule
 	}
 
 	ruleArn := ""
-rules:
 	for _, rule := range rulesOutput.Rules {
-		for _, cond := range rule.Conditions {
-			if cond.PathPatternConfig != nil && target.PathPattern != nil && sameStringSlicesUnordered(cond.PathPatternConfig.Values, target.PathPattern) {
-				continue rules
-			}
-			if cond.HostHeaderConfig != nil && target.HostHeader != nil && sameStringSlicesUnordered(cond.HostHeaderConfig.Values, target.HostHeader) {
-				continue rules
-			}
-			// Only path and host header conditions are supported for now
-			if cond.SourceIpConfig != nil || cond.QueryStringConfig != nil || cond.HttpHeaderConfig != nil || cond.HttpRequestMethodConfig != nil {
-				continue rules
-			}
+		if RuleConditionMatches(rule, target) {
 			ruleArn = *rule.RuleArn
-			break rules
+			break
 		}
 	}
 
@@ -61,6 +50,47 @@ rules:
 		return err
 	}
 	return nil
+}
+
+// TODO: Add unit test
+func RuleConditionMatches(rule types.Rule, target RuleCondition) bool {
+	// Only path and host header conditions are supported for now
+	for _, cond := range rule.Conditions {
+		if cond.SourceIpConfig != nil || cond.QueryStringConfig != nil || cond.HttpHeaderConfig != nil || cond.HttpRequestMethodConfig != nil {
+			return false
+		}
+	}
+
+	if target.PathPattern != nil {
+		found := false
+		for _, cond := range rule.Conditions {
+			if cond.PathPatternConfig != nil {
+				if !sameStringSlicesUnordered(cond.PathPatternConfig.Values, target.PathPattern) {
+					return false
+				}
+				found = true
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	if target.HostHeader != nil {
+		found := false
+		for _, cond := range rule.Conditions {
+			if cond.HostHeaderConfig != nil {
+				if !sameStringSlicesUnordered(cond.HostHeaderConfig.Values, target.HostHeader) {
+					return false
+				}
+				found = true
+			}
+			if !found {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func AddListenerStaticRule(ctx context.Context, listenerArn string, ruleCond RuleCondition, value string) error {

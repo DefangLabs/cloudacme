@@ -5,10 +5,11 @@ import (
 	"fmt"
 
 	"defang.io/cloudacme/aws"
+	"defang.io/cloudacme/aws/alb"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 )
 
-var listenerArn = "arn:aws:elasticloadbalancing:us-west-2:381492210770:listener/app/Defang-dayifu2-beta-alb/6f1d3e4bf5cbac4b/84ccc1071870455c"
+var listenerArn = "arn:aws:elasticloadbalancing:us-west-2:381492210770:listener/app/Defang-dayifu2-beta-alb/5eb772581ea25ded/b4aac40fca2063e5"
 var path = "/"
 
 func main() {
@@ -21,6 +22,11 @@ func main() {
 	rulesOutput, err := svc.DescribeRules(ctx, searchInput)
 	if err != nil {
 		panic(err)
+	}
+
+	ruleCond := alb.RuleCondition{
+		HostHeader:  []string{"web.dayifu.net"},
+		PathPattern: []string{"/.well-known/acme-challenge/4JXzPaiGZs-x_MADGpPbiB8EoK_Fba_TgZsr7hfT6fA"},
 	}
 
 	for _, rule := range rulesOutput.Rules {
@@ -47,5 +53,11 @@ func main() {
 			}
 			fmt.Printf("Values: %v\n", condition.Values)
 		}
+
+		if alb.RuleConditionMatches(rule, ruleCond) {
+			fmt.Printf("RuleArn: %v Matches target %v\n", *rule.RuleArn, ruleCond)
+		}
+
+		fmt.Printf("\n\n")
 	}
 }
