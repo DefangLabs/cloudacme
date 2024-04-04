@@ -85,9 +85,9 @@ func RuleConditionMatches(rule types.Rule, target RuleCondition) bool {
 				}
 				found = true
 			}
-			if !found {
-				return false
-			}
+		}
+		if !found {
+			return false
 		}
 	}
 	return true
