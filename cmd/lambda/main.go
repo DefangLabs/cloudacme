@@ -90,11 +90,13 @@ func HandleALBEvent(ctx context.Context, evt events.ALBTargetGroupRequest) (*eve
 }
 
 func validateCertAttached(ctx context.Context, domain string) error {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		default:
+		case <-ticker.C:
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("https://%s", domain), nil)
 			if err != nil {
 				return fmt.Errorf("failed to create request: %w", err)
@@ -103,6 +105,7 @@ func validateCertAttached(ctx context.Context, domain string) error {
 			if _, err := http.DefaultClient.Do(req); err != nil {
 				var tlsErr *tls.CertificateVerificationError
 				if errors.As(err, &tlsErr) {
+					log.Printf("ssl cert for %v is still not valid", tlsErr)
 					continue
 				}
 				return fmt.Errorf("failed https request to domain %v: %w", domain, err)
