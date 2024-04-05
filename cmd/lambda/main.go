@@ -3,13 +3,16 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
+	"time"
 
 	"defang.io/cloudacme/acme"
 	"defang.io/cloudacme/aws/acm"
@@ -72,12 +75,41 @@ func HandleALBEvent(ctx context.Context, evt events.ALBTargetGroupRequest) (*eve
 		return nil, fmt.Errorf("failed to remove http rule: %w", err)
 	}
 
+	validationCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	if err := validateCertAttached(validationCtx, host); err != nil {
+		return nil, fmt.Errorf("failed to validate certificate: %w", err)
+	}
+
 	return &events.ALBTargetGroupResponse{
 		StatusCode: 301,
 		Headers: map[string]string{
 			"Location": getHttpsRedirectURL(evt),
 		},
 	}, nil
+}
+
+func validateCertAttached(ctx context.Context, domain string) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("https://%s", domain), nil)
+			if err != nil {
+				return fmt.Errorf("failed to create request: %w", err)
+			}
+
+			if _, err := http.DefaultClient.Do(req); err != nil {
+				var tlsErr *tls.CertificateVerificationError
+				if errors.As(err, &tlsErr) {
+					continue
+				}
+				return fmt.Errorf("failed https request to domain %v: %w", domain, err)
+			}
+			return nil
+		}
+	}
 }
 
 func removeHttpRule(ctx context.Context, albArn string, ruleCond alb.RuleCondition) error {
