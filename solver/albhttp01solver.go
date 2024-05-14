@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"defang.io/cloudacme/aws/alb"
+	"github.com/defang-io/cloudacme/aws/alb"
 	awsalb "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/mholt/acmez/acme"
 	"go.uber.org/zap"

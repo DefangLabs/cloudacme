@@ -14,9 +14,9 @@ import (
 	"os"
 	"time"
 
-	"defang.io/cloudacme/acme"
-	"defang.io/cloudacme/aws/acm"
-	"defang.io/cloudacme/aws/alb"
+	"github.com/defang-io/cloudacme/acme"
+	"github.com/defang-io/cloudacme/aws/acm"
+	"github.com/defang-io/cloudacme/aws/alb"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	awsalb "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"

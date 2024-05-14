@@ -8,7 +8,7 @@ import (
 	"crypto/rand"
 	"fmt"
 
-	"defang.io/cloudacme/solver"
+	"github.com/defang-io/cloudacme/solver"
 	"github.com/mholt/acmez"
 	"github.com/mholt/acmez/acme"
 	"go.uber.org/zap"
