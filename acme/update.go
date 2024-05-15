@@ -12,12 +12,10 @@ import (
 
 	"github.com/defang-io/cloudacme/aws/acm"
 	"github.com/defang-io/cloudacme/aws/alb"
-	"github.com/defang-io/cloudacme/solver"
 	"github.com/mholt/acmez"
 	"go.uber.org/zap"
 )
 
-var ChallengeSolver acmez.Solver
 var logger *zap.Logger
 
 func init() {
@@ -28,7 +26,7 @@ func init() {
 	}
 }
 
-func UpdateAcmeCertificate(ctx context.Context, albArn, domain string) error {
+func UpdateAcmeCertificate(ctx context.Context, albArn, domain string, solver acmez.Solver) error {
 	accountKey, err := getAccountKey()
 	if err != nil {
 		return fmt.Errorf("failed to get account key: %w", err)
@@ -77,20 +75,12 @@ func UpdateAcmeCertificate(ctx context.Context, albArn, domain string) error {
 		acmeDirectory = DefaultAcmeDirectory
 	}
 
-	cs := ChallengeSolver
-	if cs == nil {
-		cs = solver.AlbHttp01Solver{
-			AlbArn:  albArn,
-			Domains: []string{domain},
-			Logger:  logger,
-		}
-	}
 	acmeClient := Acme{
 		Directory:  acmeDirectory,
 		AccountKey: accountKey,
 		Logger:     logger,
 		AlbArn:     albArn,
-		HttpSolver: cs,
+		HttpSolver: solver,
 	}
 
 	key, chain, err := acmeClient.GetCertificate(ctx, []string{domain})

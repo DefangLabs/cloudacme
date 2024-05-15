@@ -15,6 +15,7 @@ import (
 	awsalb "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/defang-io/cloudacme/acme"
 	"github.com/defang-io/cloudacme/aws/alb"
+	"github.com/defang-io/cloudacme/solver"
 )
 
 var version = "dev" // to be set by ldflags
@@ -48,7 +49,12 @@ func HandleALBEvent(ctx context.Context, evt events.ALBTargetGroupRequest) (*eve
 	}
 
 	host := evt.Headers["host"]
-	if err := acme.UpdateAcmeCertificate(ctx, albArn, host); err != nil {
+	albSolver := solver.AlbHttp01Solver{
+		AlbArn:  albArn,
+		Domains: []string{host},
+	}
+
+	if err := acme.UpdateAcmeCertificate(ctx, albArn, host, albSolver); err != nil {
 		return nil, fmt.Errorf("failed to update certificate: %w", err)
 	}
 
@@ -57,11 +63,11 @@ func HandleALBEvent(ctx context.Context, evt events.ALBTargetGroupRequest) (*eve
 		PathPattern: []string{"/"},
 	}
 
-	if err := removeHttpRule(ctx, albArn, cond); err != nil {
+	if err := RemoveHttpRule(ctx, albArn, cond); err != nil {
 		return nil, fmt.Errorf("failed to remove http rule: %w", err)
 	}
 
-	validationCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	validationCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	if err := validateCertAttached(validationCtx, host); err != nil {
 		return nil, fmt.Errorf("failed to validate certificate: %w", err)
@@ -91,7 +97,7 @@ func validateCertAttached(ctx context.Context, domain string) error {
 			if _, err := http.DefaultClient.Do(req); err != nil {
 				var tlsErr *tls.CertificateVerificationError
 				if errors.As(err, &tlsErr) {
-					log.Printf("ssl cert for %v is still not valid", tlsErr)
+					log.Printf("ssl cert for %v is still not valid: %v", domain, tlsErr)
 					continue
 				}
 				return fmt.Errorf("failed https request to domain %v: %w", domain, err)
@@ -101,7 +107,7 @@ func validateCertAttached(ctx context.Context, domain string) error {
 	}
 }
 
-func removeHttpRule(ctx context.Context, albArn string, ruleCond alb.RuleCondition) error {
+func RemoveHttpRule(ctx context.Context, albArn string, ruleCond alb.RuleCondition) error {
 	listener, err := alb.GetListener(ctx, albArn, awsalb.ProtocolEnumHttp, 80)
 	if err != nil {
 		return fmt.Errorf("cannot get http listener: %w", err)
@@ -133,7 +139,12 @@ func getHttpsRedirectURL(evt events.ALBTargetGroupRequest) string {
 func HandleEventBridgeEvent(ctx context.Context, evt CertificateRenewalEvent) error {
 	log.Printf("Handling Certificate Renewal Event: %+v", evt)
 
-	if err := acme.UpdateAcmeCertificate(ctx, evt.AlbArn, evt.Domain); err != nil {
+	albSolver := solver.AlbHttp01Solver{
+		AlbArn:  evt.AlbArn,
+		Domains: []string{evt.Domain},
+	}
+
+	if err := acme.UpdateAcmeCertificate(ctx, evt.AlbArn, evt.Domain, albSolver); err != nil {
 		return fmt.Errorf("failed to renew certificate: %w", err)
 	}
 
