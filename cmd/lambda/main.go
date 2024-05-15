@@ -12,7 +12,6 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	awsalb "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/defang-io/cloudacme/acme"
 	"github.com/defang-io/cloudacme/aws/alb"
 	"github.com/defang-io/cloudacme/solver"
@@ -63,7 +62,7 @@ func HandleALBEvent(ctx context.Context, evt events.ALBTargetGroupRequest) (*eve
 		PathPattern: []string{"/"},
 	}
 
-	if err := RemoveHttpRule(ctx, albArn, cond); err != nil {
+	if err := acme.RemoveHttpRule(ctx, albArn, cond); err != nil {
 		return nil, fmt.Errorf("failed to remove http rule: %w", err)
 	}
 
@@ -105,17 +104,6 @@ func validateCertAttached(ctx context.Context, domain string) error {
 			return nil
 		}
 	}
-}
-
-func RemoveHttpRule(ctx context.Context, albArn string, ruleCond alb.RuleCondition) error {
-	listener, err := alb.GetListener(ctx, albArn, awsalb.ProtocolEnumHttp, 80)
-	if err != nil {
-		return fmt.Errorf("cannot get http listener: %w", err)
-	}
-	if err := alb.DeleteListenerPathRule(ctx, *listener.ListenerArn, ruleCond); err != nil {
-		return fmt.Errorf("failed to delete listener static rule: %w", err)
-	}
-	return nil
 }
 
 func getHttpsRedirectURL(evt events.ALBTargetGroupRequest) string {

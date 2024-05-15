@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 
+	awsalb "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/defang-io/cloudacme/aws/acm"
 	"github.com/defang-io/cloudacme/aws/alb"
 	"github.com/mholt/acmez"
@@ -90,6 +91,17 @@ func UpdateAcmeCertificate(ctx context.Context, albArn, domain string, solver ac
 
 	if err := acm.ImportCertificate(ctx, key, chain, certToUpdate); err != nil {
 		return fmt.Errorf("error importing certificate: %w", err)
+	}
+	return nil
+}
+
+func RemoveHttpRule(ctx context.Context, albArn string, ruleCond alb.RuleCondition) error {
+	listener, err := alb.GetListener(ctx, albArn, awsalb.ProtocolEnumHttp, 80)
+	if err != nil {
+		return fmt.Errorf("cannot get http listener: %w", err)
+	}
+	if err := alb.DeleteListenerPathRule(ctx, *listener.ListenerArn, ruleCond); err != nil {
+		return fmt.Errorf("failed to delete listener static rule: %w", err)
 	}
 	return nil
 }
