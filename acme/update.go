@@ -17,7 +17,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var challengeSolver acmez.Solver
+var ChallengeSolver acmez.Solver
 var logger *zap.Logger
 
 func init() {
@@ -77,7 +77,7 @@ func UpdateAcmeCertificate(ctx context.Context, albArn, domain string) error {
 		acmeDirectory = DefaultAcmeDirectory
 	}
 
-	cs := challengeSolver
+	cs := ChallengeSolver
 	if cs == nil {
 		cs = solver.AlbHttp01Solver{
 			AlbArn:  albArn,
