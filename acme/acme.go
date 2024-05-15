@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"fmt"
 
-	"github.com/defang-io/cloudacme/solver"
 	"github.com/mholt/acmez"
 	"github.com/mholt/acmez/acme"
 	"go.uber.org/zap"
@@ -22,6 +21,7 @@ type Acme struct {
 	AccountKey crypto.Signer
 	Logger     *zap.Logger
 	AlbArn     string
+	HttpSolver acmez.Solver
 }
 
 func (a Acme) GetCertificate(ctx context.Context, domains []string) (crypto.Signer, []byte, error) {
@@ -31,11 +31,7 @@ func (a Acme) GetCertificate(ctx context.Context, domains []string) (crypto.Sign
 			Logger:    a.Logger,
 		},
 		ChallengeSolvers: map[string]acmez.Solver{
-			acme.ChallengeTypeHTTP01: solver.AlbHttp01Solver{
-				AlbArn:  a.AlbArn,
-				Domains: domains,
-				Logger:  a.Logger,
-			},
+			acme.ChallengeTypeHTTP01: a.HttpSolver,
 		},
 	}
 

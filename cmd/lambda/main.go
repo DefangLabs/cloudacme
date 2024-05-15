@@ -2,25 +2,19 @@ package main
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"crypto/tls"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"time"
 
-	"github.com/defang-io/cloudacme/acme"
-	"github.com/defang-io/cloudacme/aws/acm"
-	"github.com/defang-io/cloudacme/aws/alb"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	awsalb "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
-	"go.uber.org/zap"
+	"github.com/defang-io/cloudacme/acme"
+	"github.com/defang-io/cloudacme/aws/alb"
 )
 
 var version = "dev" // to be set by ldflags
@@ -35,16 +29,8 @@ type Event struct {
 	CertificateRenewalEvent
 }
 
-var logger *zap.Logger
-
 func HandleEvent(ctx context.Context, evt Event) (any, error) {
 	log.Printf("cloudacme version %v", version)
-	var err error
-	logger, err = zap.NewDevelopment()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create logger: %w", err)
-	}
-
 	if evt.HTTPMethod != "" {
 		return HandleALBEvent(ctx, evt.ALBTargetGroupRequest)
 	} else {
@@ -62,7 +48,7 @@ func HandleALBEvent(ctx context.Context, evt events.ALBTargetGroupRequest) (*eve
 	}
 
 	host := evt.Headers["host"]
-	if err := updateAcmeCertificate(ctx, albArn, host); err != nil {
+	if err := acme.UpdateAcmeCertificate(ctx, albArn, host); err != nil {
 		return nil, fmt.Errorf("failed to update certificate: %w", err)
 	}
 
@@ -144,94 +130,10 @@ func getHttpsRedirectURL(evt events.ALBTargetGroupRequest) string {
 	return fmt.Sprintf("https://%s%s%s", evt.Headers["host"], evt.Path, params)
 }
 
-func updateAcmeCertificate(ctx context.Context, albArn, domain string) error {
-	accountKey, err := getAccountKey()
-	if err != nil {
-		return fmt.Errorf("failed to get account key: %w", err)
-	}
-
-	// Find the certificate to update from all the certificates attached to the ALB
-	certArns, err := alb.GetAlbCerts(ctx, albArn)
-	if err != nil {
-		return fmt.Errorf("failed to get ALB certificates: %w", err)
-	}
-
-	var getCertErrs []error
-	certToUpdate := ""
-	for _, certArn := range certArns {
-		certPem, err := acm.GetCertificate(ctx, certArn)
-		if err != nil {
-			getCertErrs = append(getCertErrs, err)
-			continue
-		}
-		block, _ := pem.Decode([]byte(certPem))
-		if block == nil {
-			getCertErrs = append(getCertErrs, fmt.Errorf("failed to decode certificate pem for %v", certArn))
-			continue
-		}
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			getCertErrs = append(getCertErrs, fmt.Errorf("failed to parse certificate for %v: %w", certArn, err))
-			continue
-		}
-		if cert.Subject.CommonName == domain {
-			// TODO: check the issuer and expiration date
-			// TODO: should we check SANs? probably not, as byod domain are added as SNI single domain certs
-			certToUpdate = certArn
-			break
-		}
-	}
-	if certToUpdate == "" {
-		if len(getCertErrs) == 0 {
-			return fmt.Errorf("no certificate matching %v found", domain)
-		}
-		return fmt.Errorf("failed to get certificate: %w", errors.Join(getCertErrs...))
-	}
-
-	acmeDirectory := os.Getenv("ACME_DIRECTORY")
-	if acmeDirectory == "" {
-		acmeDirectory = acme.DefaultAcmeDirectory
-	}
-
-	acmeClient := acme.Acme{
-		Directory:  acmeDirectory,
-		AccountKey: accountKey,
-		Logger:     logger,
-		AlbArn:     albArn,
-	}
-
-	key, chain, err := acmeClient.GetCertificate(ctx, []string{domain})
-	if err != nil {
-		return fmt.Errorf("failed to get certificates: %w", err)
-	}
-
-	if err := acm.ImportCertificate(ctx, key, chain, certToUpdate); err != nil {
-		return fmt.Errorf("error importing certificate: %w", err)
-	}
-	return nil
-}
-
-func getAccountKey() (*ecdsa.PrivateKey, error) {
-
-	accountKeyPem := os.Getenv("ACME_ACCOUNT_KEY")
-	if accountKeyPem == "" {
-		return nil, fmt.Errorf("ACME_ACCOUNT_KEY environment variable not set")
-	}
-	block, _ := pem.Decode([]byte(accountKeyPem)) // 2nd return value is not err, is the remaining data
-	if block == nil {
-		return nil, fmt.Errorf("failed to decode account key")
-	}
-	key, err := x509.ParseECPrivateKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse account key: %v", err)
-	}
-	return key, nil
-}
-
 func HandleEventBridgeEvent(ctx context.Context, evt CertificateRenewalEvent) error {
 	log.Printf("Handling Certificate Renewal Event: %+v", evt)
 
-	if err := updateAcmeCertificate(ctx, evt.AlbArn, evt.Domain); err != nil {
+	if err := acme.UpdateAcmeCertificate(ctx, evt.AlbArn, evt.Domain); err != nil {
 		return fmt.Errorf("failed to renew certificate: %w", err)
 	}
 
