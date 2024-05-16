@@ -12,9 +12,9 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/defang-io/cloudacme/acme"
-	"github.com/defang-io/cloudacme/aws/alb"
-	"github.com/defang-io/cloudacme/solver"
+	"github.com/DefangLabs/cloudacme/acme"
+	"github.com/DefangLabs/cloudacme/aws/alb"
+	"github.com/DefangLabs/cloudacme/solver"
 )
 
 var version = "dev" // to be set by ldflags

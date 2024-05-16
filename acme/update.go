@@ -11,8 +11,8 @@ import (
 	"os"
 
 	awsalb "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
-	"github.com/defang-io/cloudacme/aws/acm"
-	"github.com/defang-io/cloudacme/aws/alb"
+	"github.com/DefangLabs/cloudacme/aws/acm"
+	"github.com/DefangLabs/cloudacme/aws/alb"
 	"github.com/mholt/acmez"
 	"go.uber.org/zap"
 )

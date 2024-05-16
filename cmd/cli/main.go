@@ -4,8 +4,8 @@ import (
 	"context"
 	"log"
 
-	"github.com/defang-io/cloudacme/acme"
-	"github.com/defang-io/cloudacme/aws/acm"
+	"github.com/DefangLabs/cloudacme/acme"
+	"github.com/DefangLabs/cloudacme/aws/acm"
 	"github.com/spf13/pflag"
 	"go.uber.org/zap"
 )

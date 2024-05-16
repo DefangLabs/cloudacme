@@ -3,7 +3,7 @@ package ssm
 import (
 	"context"
 
-	"github.com/defang-io/cloudacme/aws"
+	"github.com/DefangLabs/cloudacme/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/aws/smithy-go/ptr"

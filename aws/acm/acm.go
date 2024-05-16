@@ -7,7 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 
-	"github.com/defang-io/cloudacme/aws"
+	"github.com/DefangLabs/cloudacme/aws"
 	"github.com/aws/aws-sdk-go-v2/service/acm"
 )
 

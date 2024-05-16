@@ -1,4 +1,4 @@
-module github.com/defang-io/cloudacme
+module github.com/DefangLabs/cloudacme
 
 go 1.21.5
 

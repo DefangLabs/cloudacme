@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/defang-io/cloudacme/aws/ssm"
+	"github.com/DefangLabs/cloudacme/aws/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
