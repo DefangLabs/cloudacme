@@ -9,10 +9,9 @@ import (
 	"net/http"
 	"time"
 
-	awsalb "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/DefangLabs/cloudacme/aws/alb"
+	awsalb "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/mholt/acmez/acme"
-	"go.uber.org/zap"
 )
 
 const DefaultWaitTimeout = 5 * time.Minute
@@ -21,11 +20,10 @@ type AlbHttp01Solver struct {
 	AlbArn      string
 	Domains     []string
 	WaitTimeout time.Duration
-	Logger      *zap.Logger
 }
 
 func (s AlbHttp01Solver) Present(ctx context.Context, chal acme.Challenge) error {
-	s.Logger.Info("Presenting challenge", zap.Strings("domains", s.Domains), zap.String("path", chal.HTTP01ResourcePath()))
+	log.Printf("Presenting challenge for domain %v at path %v", s.Domains, chal.HTTP01ResourcePath())
 	listener, err := alb.GetListener(ctx, s.AlbArn, awsalb.ProtocolEnumHttp, 80)
 	if err != nil {
 		return fmt.Errorf("cannot get http listener: %w", err)
