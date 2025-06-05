@@ -10,8 +10,8 @@ It makes the following assumption:
     - Host header condition matching the domain name
     - Path condition for "/"
 3. The lambda function has the correct permissions to operate with:
-  - ACM for listing and importing certificates
-  - ALB for find, adding and removal of rules
+    - ACM for listing and importing certificates
+    - ALB for find, adding and removal of rules
 4. The trigger will be removed after a successful import of the certificate.
 
 ### Certificate renewal
