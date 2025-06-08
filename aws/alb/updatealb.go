@@ -168,7 +168,7 @@ func AddListenerTriggerTargetGroupRule(ctx context.Context, listenerArn string, 
 	return nil
 }
 
-func GetLambdaTargetGroup(ctx context.Context, albArn, lambdaArn string) (string, error) {
+func GetLambdaTargetGroup(ctx context.Context, lambdaArn string) (string, error) {
 	svc := elbv2.NewFromConfig(aws.LoadConfig())
 	paginator := elbv2.NewDescribeTargetGroupsPaginator(svc, &elbv2.DescribeTargetGroupsInput{})
 
