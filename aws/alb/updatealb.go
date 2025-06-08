@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/DefangLabs/cloudacme/aws"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -130,6 +131,79 @@ func AddListenerStaticRule(ctx context.Context, listenerArn string, ruleCond Rul
 		return err
 	}
 	return nil
+}
+
+func AddListenerTriggerTargetGroupRule(ctx context.Context, listenerArn string, ruleCond RuleCondition, targetArn string) error {
+	svc := elbv2.NewFromConfig(aws.LoadConfig())
+
+	priority, err := GetNextAvailablePriority(ctx, listenerArn)
+	if err != nil {
+		return err
+	}
+
+	input := &elbv2.CreateRuleInput{
+		Actions: []types.Action{
+			{
+				Type:           types.ActionTypeEnumForward,
+				TargetGroupArn: &targetArn,
+			},
+		},
+		Conditions: []types.RuleCondition{
+			{
+				Field:             ptr.String("path-pattern"),
+				PathPatternConfig: &types.PathPatternConditionConfig{Values: ruleCond.PathPattern},
+			},
+			{
+				Field:            ptr.String("host-header"),
+				HostHeaderConfig: &types.HostHeaderConditionConfig{Values: ruleCond.HostHeader},
+			},
+		},
+		ListenerArn: &listenerArn,
+		Priority:    ptr.Int32(priority),
+	}
+
+	if _, err := svc.CreateRule(ctx, input); err != nil {
+		return err
+	}
+	return nil
+}
+
+func GetLambdaTargetGroup(ctx context.Context, albArn, lambdaArn string) (string, error) {
+	svc := elbv2.NewFromConfig(aws.LoadConfig())
+	paginator := elbv2.NewDescribeTargetGroupsPaginator(svc, &elbv2.DescribeTargetGroupsInput{})
+
+	fmt.Printf("Searching for target group for lambda %s\n", lambdaArn)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return "", fmt.Errorf("failed to list target groups: %w", err)
+		}
+
+		for _, tg := range page.TargetGroups {
+			fmt.Printf("Checking target group %s of type %s\n", *tg.TargetGroupArn, tg.TargetType)
+			if tg.TargetType != types.TargetTypeEnumLambda {
+				continue
+			}
+
+			// Check registered targets for this target group
+			targetsOut, err := svc.DescribeTargetHealth(ctx, &elbv2.DescribeTargetHealthInput{
+				TargetGroupArn: tg.TargetGroupArn,
+			})
+			if err != nil {
+				return "", fmt.Errorf("describe target health failed for %s: %w", *tg.TargetGroupArn, err)
+			}
+
+			for _, desc := range targetsOut.TargetHealthDescriptions {
+				if desc.Target != nil && desc.Target.Id != nil {
+					fmt.Printf("Checking target %s with status %s\n", *desc.Target.Id, desc.TargetHealth.State)
+					if strings.HasPrefix(lambdaArn, *desc.Target.Id) {
+						return *tg.TargetGroupArn, nil
+					}
+				}
+			}
+		}
+	}
+	return "", fmt.Errorf("no target group found for lambda %s in listener %v", lambdaArn, albArn)
 }
 
 func GetNextAvailablePriority(ctx context.Context, listenerArn string) (int32, error) {
