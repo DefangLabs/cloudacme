@@ -101,7 +101,7 @@ func SetupHttpRule(ctx context.Context, albArn, lambdaArn string, ruleCond alb.R
 		return fmt.Errorf("cannot get http listener: %w", err)
 	}
 
-	targetGroupArn, err := alb.GetLambdaTargetGroup(ctx, albArn, lambdaArn)
+	targetGroupArn, err := alb.GetLambdaTargetGroup(ctx, lambdaArn)
 	if err != nil {
 		return fmt.Errorf("cannot get target group for lambda %v: %w", lambdaArn, err)
 	}

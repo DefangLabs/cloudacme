@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -180,7 +181,7 @@ func GetLambdaTargetGroup(ctx context.Context, lambdaArn string) (string, error)
 		}
 
 		for _, tg := range page.TargetGroups {
-			fmt.Printf("Checking target group %s of type %s\n", *tg.TargetGroupArn, tg.TargetType)
+			log.Printf("Checking target group %s of type %s", *tg.TargetGroupArn, tg.TargetType)
 			if tg.TargetType != types.TargetTypeEnumLambda {
 				continue
 			}
@@ -195,7 +196,7 @@ func GetLambdaTargetGroup(ctx context.Context, lambdaArn string) (string, error)
 
 			for _, desc := range targetsOut.TargetHealthDescriptions {
 				if desc.Target != nil && desc.Target.Id != nil {
-					fmt.Printf("Checking target %s with status %s\n", *desc.Target.Id, desc.TargetHealth.State)
+					log.Printf("Checking target %s with status %s", *desc.Target.Id, desc.TargetHealth.State)
 					if strings.HasPrefix(lambdaArn, *desc.Target.Id) {
 						return *tg.TargetGroupArn, nil
 					}
@@ -203,7 +204,7 @@ func GetLambdaTargetGroup(ctx context.Context, lambdaArn string) (string, error)
 			}
 		}
 	}
-	return "", fmt.Errorf("no target group found for lambda %s in listener %v", lambdaArn, albArn)
+	return "", fmt.Errorf("no target group found for lambda %s", lambdaArn)
 }
 
 func GetNextAvailablePriority(ctx context.Context, listenerArn string) (int32, error) {
