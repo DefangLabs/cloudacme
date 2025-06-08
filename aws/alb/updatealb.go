@@ -172,7 +172,7 @@ func GetLambdaTargetGroup(ctx context.Context, lambdaArn string) (string, error)
 	svc := elbv2.NewFromConfig(aws.LoadConfig())
 	paginator := elbv2.NewDescribeTargetGroupsPaginator(svc, &elbv2.DescribeTargetGroupsInput{})
 
-	fmt.Printf("Searching for target group for lambda %s\n", lambdaArn)
+	log.Printf("Searching for target group for lambda %s", lambdaArn)
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
