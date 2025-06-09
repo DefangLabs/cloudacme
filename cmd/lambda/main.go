@@ -3,18 +3,21 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
-	"github.com/aws/aws-lambda-go/events"
-	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/DefangLabs/cloudacme/acme"
 	"github.com/DefangLabs/cloudacme/aws/alb"
 	"github.com/DefangLabs/cloudacme/solver"
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-lambda-go/lambdacontext"
 )
 
 var version = "dev" // to be set by ldflags
@@ -34,7 +37,28 @@ func HandleEvent(ctx context.Context, evt Event) (any, error) {
 	if evt.HTTPMethod != "" {
 		return HandleALBEvent(ctx, evt.ALBTargetGroupRequest)
 	} else {
-		return nil, HandleEventBridgeEvent(ctx, evt.CertificateRenewalEvent)
+		_, cert, err := acme.GetExistingCertificate(ctx, evt.AlbArn, evt.Domain)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get existing certificate: %w", err)
+		}
+
+		ownArn := ""
+		if lc, ok := lambdacontext.FromContext(ctx); ok {
+			ownArn = lc.InvokedFunctionArn
+		}
+		if ownArn == "" {
+			return nil, errors.New("unable to determine own Lambda ARN from context")
+		}
+
+		if !IsLetsEncryptCertificate(cert) {
+			log.Printf("Certificate for domain %s is not issued by Let's Encrypt, initial run, setup load balancer rule for acme lambda", evt.Domain)
+			return nil, acme.SetupHttpRule(ctx, evt.AlbArn, ownArn, alb.RuleCondition{
+				HostHeader:  []string{evt.Domain},
+				PathPattern: []string{"/"},
+			})
+		} else {
+			return nil, HandleScheduledRenewalEvent(ctx, evt.CertificateRenewalEvent)
+		}
 	}
 }
 
@@ -124,7 +148,7 @@ func getHttpsRedirectURL(evt events.ALBTargetGroupRequest) string {
 	return fmt.Sprintf("https://%s%s%s", evt.Headers["host"], evt.Path, params)
 }
 
-func HandleEventBridgeEvent(ctx context.Context, evt CertificateRenewalEvent) error {
+func HandleScheduledRenewalEvent(ctx context.Context, evt CertificateRenewalEvent) error {
 	log.Printf("Handling Certificate Renewal Event: %+v", evt)
 
 	albSolver := solver.AlbHttp01Solver{
@@ -137,6 +161,22 @@ func HandleEventBridgeEvent(ctx context.Context, evt CertificateRenewalEvent) er
 	}
 
 	return nil
+}
+
+func IsLetsEncryptCertificate(cert *x509.Certificate) bool {
+	// Check Issuer Organization
+	for _, org := range cert.Issuer.Organization {
+		if strings.Contains(strings.ToLower(org), "let's encrypt") {
+			return true
+		}
+	}
+
+	// Fallback: check Common Name
+	if strings.Contains(strings.ToLower(cert.Issuer.CommonName), "let's encrypt") {
+		return true
+	}
+
+	return false
 }
 
 func main() {
