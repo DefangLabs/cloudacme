@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/DefangLabs/cloudacme/aws/acm"
 	"github.com/DefangLabs/cloudacme/aws/alb"
 	awsalb "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/smithy-go"
 	"github.com/mholt/acmez"
 	"go.uber.org/zap"
 )
@@ -64,9 +66,23 @@ func UpdateAcmeCertificate(ctx context.Context, albArn, domain string, solver ac
 
 func GetExistingCertificate(ctx context.Context, albArn, domain string) (string, *x509.Certificate, error) {
 	// Find the certificate to update from all the certificates attached to the ALB
-	certArns, err := alb.GetAlbCerts(ctx, albArn)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to get ALB certificates: %w", err)
+	var certArns []string
+	var err error
+	for i := 0; ; i++ {
+		certArns, err = alb.GetAlbCerts(ctx, albArn)
+		if err != nil {
+			var apiErr smithy.APIError
+			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "AccessDenied" {
+				if i >= 10 {
+					return "", nil, fmt.Errorf("access denied to ALB %v: %w", albArn, err)
+				}
+				log.Printf("Access denied to ALB %v, retrying (%d/10)...", albArn, i+1)
+				SleepWithContext(ctx, 10*time.Second)
+				continue
+			}
+			return "", nil, fmt.Errorf("failed to get ALB certificates: %w", err)
+		}
+		break
 	}
 
 	var getCertErrs []error
@@ -138,4 +154,15 @@ func getAccountKey() (*ecdsa.PrivateKey, error) {
 		return nil, fmt.Errorf("failed to parse account key: %v", err)
 	}
 	return key, nil
+}
+
+func SleepWithContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
