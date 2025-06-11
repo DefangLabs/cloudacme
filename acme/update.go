@@ -73,10 +73,10 @@ func GetExistingCertificate(ctx context.Context, albArn, domain string) (string,
 		if err != nil {
 			var apiErr smithy.APIError
 			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "AccessDenied" {
-				log.Printf("Access denied to ALB %v, retrying (%d/10)...", albArn, i+1)
 				if i >= 10 {
 					return "", nil, fmt.Errorf("access denied to ALB %v: %w", albArn, err)
 				}
+				log.Printf("Access denied to ALB %v, retrying (%d/10)...", albArn, i+1)
 				SleepWithContext(ctx, 10*time.Second)
 				continue
 			}
