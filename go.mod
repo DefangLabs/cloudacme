@@ -1,6 +1,6 @@
 module github.com/DefangLabs/cloudacme
 
-go 1.21.5
+go 1.24.0
 
 require (
 	github.com/aws/aws-lambda-go v1.46.0
@@ -29,7 +29,7 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
-	golang.org/x/net v0.23.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
 )
