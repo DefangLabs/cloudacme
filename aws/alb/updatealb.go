@@ -8,12 +8,16 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/DefangLabs/cloudacme/aws"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/ptr"
 )
+
+const maxPriorityRetries = 10
 
 var ErrRuleNotFound = errors.New("rule not found")
 
@@ -95,6 +99,31 @@ func RuleConditionMatches(rule types.Rule, target RuleCondition) bool {
 	return true
 }
 
+// createRuleWithRetry calls CreateRule and retries if a PriorityInUse error is returned,
+// re-fetching the next available priority on each retry.
+func createRuleWithRetry(ctx context.Context, svc *elbv2.Client, listenerArn string, input *elbv2.CreateRuleInput) error {
+	for i := 0; ; i++ {
+		if _, err := svc.CreateRule(ctx, input); err != nil {
+			var apiErr smithy.APIError
+			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "PriorityInUse" {
+				if i >= maxPriorityRetries {
+					return fmt.Errorf("failed to create rule after %d retries: %w", maxPriorityRetries, err)
+				}
+				log.Printf("Priority %d is in use, retrying (%d/%d)...", *input.Priority, i+1, maxPriorityRetries)
+				time.Sleep(time.Second)
+				priority, err := GetNextAvailablePriority(ctx, listenerArn)
+				if err != nil {
+					return err
+				}
+				input.Priority = ptr.Int32(priority)
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+}
+
 func AddListenerStaticRule(ctx context.Context, listenerArn string, ruleCond RuleCondition, value string) error {
 	svc := elbv2.NewFromConfig(aws.LoadConfig())
 
@@ -128,10 +157,7 @@ func AddListenerStaticRule(ctx context.Context, listenerArn string, ruleCond Rul
 		Priority:    ptr.Int32(priority),
 	}
 
-	if _, err := svc.CreateRule(ctx, input); err != nil {
-		return err
-	}
-	return nil
+	return createRuleWithRetry(ctx, svc, listenerArn, input)
 }
 
 func AddListenerTriggerTargetGroupRule(ctx context.Context, listenerArn string, ruleCond RuleCondition, targetArn string) error {
@@ -163,10 +189,7 @@ func AddListenerTriggerTargetGroupRule(ctx context.Context, listenerArn string, 
 		Priority:    ptr.Int32(priority),
 	}
 
-	if _, err := svc.CreateRule(ctx, input); err != nil {
-		return err
-	}
-	return nil
+	return createRuleWithRetry(ctx, svc, listenerArn, input)
 }
 
 func GetLambdaTargetGroup(ctx context.Context, lambdaArn string) (string, error) {
