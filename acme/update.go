@@ -111,6 +111,17 @@ func GetExistingCertificate(ctx context.Context, albArn, domain string) (string,
 	return "", nil, fmt.Errorf("no certificate matching %v found: %w", domain, errors.Join(getCertErrs...))
 }
 
+func MoveHttpRulePath(ctx context.Context, albArn string, oldCond alb.RuleCondition, newPathPattern []string) error {
+	listener, err := alb.GetListener(ctx, albArn, awsalb.ProtocolEnumHttp, 80)
+	if err != nil {
+		return fmt.Errorf("cannot get http listener: %w", err)
+	}
+	if err := alb.ModifyListenerRulePathPattern(ctx, *listener.ListenerArn, oldCond, newPathPattern); err != nil {
+		return fmt.Errorf("failed to modify listener rule: %w", err)
+	}
+	return nil
+}
+
 func SetupHttpRule(ctx context.Context, albArn, lambdaArn string, ruleCond alb.RuleCondition) error {
 	listener, err := alb.GetListener(ctx, albArn, awsalb.ProtocolEnumHttp, 80)
 	if err != nil {

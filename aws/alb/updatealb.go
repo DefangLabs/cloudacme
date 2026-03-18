@@ -207,6 +207,52 @@ func GetLambdaTargetGroup(ctx context.Context, lambdaArn string) (string, error)
 	return "", fmt.Errorf("no target group found for lambda %s", lambdaArn)
 }
 
+func ModifyListenerRulePathPattern(ctx context.Context, listenerArn string, target RuleCondition, newPathPattern []string) error {
+	svc := elbv2.NewFromConfig(aws.LoadConfig())
+	searchInput := &elbv2.DescribeRulesInput{
+		ListenerArn: &listenerArn,
+	}
+	rulesOutput, err := svc.DescribeRules(ctx, searchInput)
+	if err != nil {
+		return err
+	}
+
+	ruleArn := ""
+	for _, rule := range rulesOutput.Rules {
+		if RuleConditionMatches(rule, target) {
+			ruleArn = *rule.RuleArn
+			break
+		}
+	}
+
+	if ruleArn == "" {
+		return ErrRuleNotFound
+	}
+
+	var conditions []types.RuleCondition
+	if target.HostHeader != nil {
+		conditions = append(conditions, types.RuleCondition{
+			Field:            ptr.String("host-header"),
+			HostHeaderConfig: &types.HostHeaderConditionConfig{Values: target.HostHeader},
+		})
+	}
+	if newPathPattern != nil {
+		conditions = append(conditions, types.RuleCondition{
+			Field:             ptr.String("path-pattern"),
+			PathPatternConfig: &types.PathPatternConditionConfig{Values: newPathPattern},
+		})
+	}
+
+	input := &elbv2.ModifyRuleInput{
+		RuleArn:    &ruleArn,
+		Conditions: conditions,
+	}
+	if _, err := svc.ModifyRule(ctx, input); err != nil {
+		return err
+	}
+	return nil
+}
+
 func GetNextAvailablePriority(ctx context.Context, listenerArn string) (int32, error) {
 	rules, err := GetAllRules(ctx, listenerArn)
 	if err != nil {

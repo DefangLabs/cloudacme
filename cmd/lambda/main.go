@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -19,6 +20,8 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-lambda-go/lambdacontext"
 )
+
+const acmeLambdaPath = "/defang-acme-lambda"
 
 var version = "dev" // to be set by ldflags
 
@@ -81,13 +84,20 @@ func HandleALBEvent(ctx context.Context, evt events.ALBTargetGroupRequest) (*eve
 		return nil, fmt.Errorf("failed to update certificate: %w", err)
 	}
 
-	cond := alb.RuleCondition{
-		HostHeader:  []string{host},
-		PathPattern: []string{"/"},
-	}
-
-	if err := acme.RemoveHttpRule(ctx, albArn, cond); err != nil {
-		return nil, fmt.Errorf("failed to remove http rule: %w", err)
+	if os.Getenv("ACME_HTTP_LISTENER_ARN") != "" {
+		// Pulumi-managed: modify the rule path so the default HTTP->HTTPS redirect takes over
+		if err := moveHttpRuleToAcmePath(ctx, albArn, host); err != nil {
+			return nil, fmt.Errorf("failed to move http rule: %w", err)
+		}
+	} else {
+		// Self-managed (old behavior): remove the rule entirely
+		cond := alb.RuleCondition{
+			HostHeader:  []string{host},
+			PathPattern: []string{"/"},
+		}
+		if err := acme.RemoveHttpRule(ctx, albArn, cond); err != nil {
+			return nil, fmt.Errorf("failed to remove http rule: %w", err)
+		}
 	}
 
 	validationCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
@@ -146,6 +156,22 @@ func getHttpsRedirectURL(evt events.ALBTargetGroupRequest) string {
 		params = "?" + params
 	}
 	return fmt.Sprintf("https://%s%s%s", evt.Headers["host"], evt.Path, params)
+}
+
+func moveHttpRuleToAcmePath(ctx context.Context, albArn, host string) error {
+	oldCond := alb.RuleCondition{
+		HostHeader:  []string{host},
+		PathPattern: []string{"/"},
+	}
+	if err := acme.MoveHttpRulePath(ctx, albArn, oldCond, []string{acmeLambdaPath}); err != nil {
+		if errors.Is(err, alb.ErrRuleNotFound) {
+			log.Printf("HTTP rule for / not found for %s, skipping move to %s", host, acmeLambdaPath)
+			return nil
+		}
+		return fmt.Errorf("failed to move http rule to %s: %w", acmeLambdaPath, err)
+	}
+	log.Printf("Moved HTTP rule for %s from / to %s", host, acmeLambdaPath)
+	return nil
 }
 
 func HandleScheduledRenewalEvent(ctx context.Context, evt CertificateRenewalEvent) error {
